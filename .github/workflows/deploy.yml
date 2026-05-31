@@ -1,0 +1,57 @@
+name: Deploy API with Cloudflare Tunnel
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: |
+        cd /home/runner/work/project
+        npm install express axios cheerio node-cache compression xml2js
+        # Install cloudflared
+        curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+        chmod +x cloudflared
+    
+    - name: Start all servers
+      run: |
+        # Start server on port 3000 (AdultEmpire API)
+        node server1.js &
+        
+        # Start server on port 2000 (SpeedPorn API)
+        node server2.js &
+        
+        # Start server on port 4444 (Gateway API)
+        node server3.js &
+        
+        # Wait for servers to start
+        sleep 10
+    
+    - name: Create Cloudflare Tunnel
+      run: |
+        # Run cloudflared tunnel to expose port 4444
+        ./cloudflared tunnel --url http://localhost:4444 --no-autoupdate &
+        
+        # Wait for tunnel to establish and capture URL
+        sleep 5
+        
+        # Get the public URL
+        TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+        echo "PUBLIC_URL=$TUNNEL_URL" >> $GITHUB_ENV
+        
+        echo "✅ Tunnel established at: $TUNNEL_URL"
+        
+        # Keep the workflow running
+        wait
