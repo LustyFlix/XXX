@@ -3,7 +3,7 @@ name: Deploy API with Cloudflare Tunnel
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -19,39 +19,61 @@ jobs:
     
     - name: Install dependencies
       run: |
-        cd /home/runner/work/project
+        # Install npm packages in the current directory (where your repo is)
         npm install express axios cheerio node-cache compression xml2js
+        
         # Install cloudflared
         curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
         chmod +x cloudflared
     
     - name: Start all servers
       run: |
+        # Make sure your server files exist in the repository
+        ls -la
+        
         # Start server on port 3000 (AdultEmpire API)
-        node server1.js &
+        node index.js &
         
-        # Start server on port 2000 (SpeedPorn API)
-        node server2.js &
+        # Start server on port 2000 (SpeedPorn API) - adjust filename as needed
+        node index2.js &
         
-        # Start server on port 4444 (Gateway API)
-        node server3.js &
+        # Start server on port 4444 (Gateway API) - adjust filename as needed
+        node index3.js &
         
         # Wait for servers to start
         sleep 10
+        
+        # Verify servers are running
+        echo "Checking servers..."
+        curl -f http://localhost:3000/health || echo "Port 3000 not ready"
+        curl -f http://localhost:2000/health || echo "Port 2000 not ready"
+        curl -f http://localhost:4444/health || echo "Port 4444 not ready"
     
-    - name: Create Cloudflare Tunnel
+    - name: Expose via Cloudflare Tunnel
       run: |
-        # Run cloudflared tunnel to expose port 4444
+        # Start cloudflared tunnel
         ./cloudflared tunnel --url http://localhost:4444 --no-autoupdate &
         
-        # Wait for tunnel to establish and capture URL
-        sleep 5
+        # Wait for tunnel to establish
+        sleep 8
         
         # Get the public URL
-        TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-        echo "PUBLIC_URL=$TUNNEL_URL" >> $GITHUB_ENV
+        PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null || echo "Could not get URL")
         
-        echo "✅ Tunnel established at: $TUNNEL_URL"
+        echo "=========================================="
+        echo "✅ API IS NOW PUBLICLY ACCESSIBLE!"
+        echo "=========================================="
+        echo "🔗 Public URL: $PUBLIC_URL"
+        echo ""
+        echo "📚 Test your API:"
+        echo "   $PUBLIC_URL/health"
+        echo "   $PUBLIC_URL/discover/movie?page=1"
+        echo "   $PUBLIC_URL/genre/movie/list"
+        echo "   $PUBLIC_URL/person/popular?page=1"
+        echo ""
+        echo "⚠️  This tunnel will remain active for the duration of this workflow"
+        echo "⏱️  GitHub Actions workflow timeout: ~6 hours maximum"
+        echo "=========================================="
         
         # Keep the workflow running
-        wait
+        tail -f /dev/null
