@@ -17,63 +17,43 @@ jobs:
       with:
         node-version: '20'
     
-    - name: Install dependencies
+    - name: Install and Run
       run: |
-        # Install npm packages in the current directory (where your repo is)
+        # Install dependencies
         npm install express axios cheerio node-cache compression xml2js
         
         # Install cloudflared
         curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
         chmod +x cloudflared
-    
-    - name: Start all servers
-      run: |
-        # Make sure your server files exist in the repository
-        ls -la
         
-        # Start server on port 3000 (AdultEmpire API)
-        node index.js &
-        
-        # Start server on port 2000 (SpeedPorn API) - adjust filename as needed
-        node index2.js &
-        
-        # Start server on port 4444 (Gateway API) - adjust filename as needed
-        node index3.js &
+        # Start all three servers in background with nohup
+        nohup node server1.js > server1.log 2>&1 &
+        nohup node server2.js > server2.log 2>&1 &
+        nohup node server3.js > server3.log 2>&1 &
         
         # Wait for servers to start
-        sleep 10
+        sleep 15
         
-        # Verify servers are running
-        echo "Checking servers..."
-        curl -f http://localhost:3000/health || echo "Port 3000 not ready"
-        curl -f http://localhost:2000/health || echo "Port 2000 not ready"
-        curl -f http://localhost:4444/health || echo "Port 4444 not ready"
-    
-    - name: Expose via Cloudflare Tunnel
-      run: |
-        # Start cloudflared tunnel
+        # Show logs to debug
+        echo "=== Server1 Log ==="
+        cat server1.log
+        echo "=== Server2 Log ==="
+        cat server2.log
+        echo "=== Server3 Log ==="
+        cat server3.log
+        
+        # Test if servers are running
+        curl http://localhost:3000/health || echo "Port 3000 failed"
+        curl http://localhost:2000/health || echo "Port 2000 failed"
+        curl http://localhost:4444/health || echo "Port 4444 failed"
+        
+        # Start tunnel
         ./cloudflared tunnel --url http://localhost:4444 --no-autoupdate &
         
-        # Wait for tunnel to establish
-        sleep 8
+        sleep 10
         
-        # Get the public URL
-        PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null || echo "Could not get URL")
+        echo "Tunnel URL: https://your-tunnel.trycloudflare.com"
+        echo "Workflow will run for 6 hours maximum"
         
-        echo "=========================================="
-        echo "✅ API IS NOW PUBLICLY ACCESSIBLE!"
-        echo "=========================================="
-        echo "🔗 Public URL: $PUBLIC_URL"
-        echo ""
-        echo "📚 Test your API:"
-        echo "   $PUBLIC_URL/health"
-        echo "   $PUBLIC_URL/discover/movie?page=1"
-        echo "   $PUBLIC_URL/genre/movie/list"
-        echo "   $PUBLIC_URL/person/popular?page=1"
-        echo ""
-        echo "⚠️  This tunnel will remain active for the duration of this workflow"
-        echo "⏱️  GitHub Actions workflow timeout: ~6 hours maximum"
-        echo "=========================================="
-        
-        # Keep the workflow running
-        tail -f /dev/null
+        # Keep alive
+        while true; do sleep 60; done
